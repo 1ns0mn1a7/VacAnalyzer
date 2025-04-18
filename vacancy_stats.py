@@ -39,9 +39,11 @@ def predict_rub_salary_superjob(vacancy):
     return predict_salary(salary_from, salary_to)
 
 
-def fetch_hh_vacancies(api_url, keyword, area=1, period=30, per_page=100):
+def fetch_hh_vacancies(keyword, area=1, period=30, per_page=100):
+    api_url = 'https://api.hh.ru/vacancies'
     page = 0
     vacancies = []
+    total_found = 0
 
     while True:
         params = {
@@ -54,8 +56,11 @@ def fetch_hh_vacancies(api_url, keyword, area=1, period=30, per_page=100):
         response = requests.get(api_url, params=params)
         response.raise_for_status()
         api_response = response.json()
-        current_page_vacancies = api_response.get('items', [])
 
+        if page == 0:
+            total_found = api_response.get('found', 0)
+
+        current_page_vacancies = api_response.get('items', [])
         if not current_page_vacancies:
             break
 
@@ -65,35 +70,36 @@ def fetch_hh_vacancies(api_url, keyword, area=1, period=30, per_page=100):
         if page >= api_response.get('pages', 0):
             break
 
-    return vacancies
+    return vacancies, total_found
 
 
-def get_language_stats_hh(api_url, languages):
+def get_language_stats_hh(languages):
     stats = {}
 
     for language in languages:
-        vacancies = fetch_hh_vacancies(api_url, language)
+        vacancies, total_found = fetch_hh_vacancies(language)
         salaries = [
-            predict_rub_salary_hh(vacancy) for vacancy in vacancies
-            if predict_rub_salary_hh(vacancy) is not None
+            salary for vacancy in vacancies
+            if (salary := predict_rub_salary_hh(vacancy))
         ]
 
-        if salaries:
-            average_salary = int(sum(salaries) / len(salaries))
-            stats[language] = {
-                "vacancies_found": len(vacancies),
-                "vacancies_processed": len(salaries),
-                "average_salary": average_salary
-            }
+        average_salary = int(sum(salaries) / len(salaries)) if salaries else 0
+
+        stats[language] = {
+            "vacancies_found": total_found,
+            "vacancies_processed": len(salaries),
+            "average_salary": average_salary
+        }
 
     return stats
 
 
 def fetch_superjob_vacancies(api_key, catalogue_id=48, town=4, count=100, keyword=""):
-    url = 'https://api.superjob.ru/2.0/vacancies/'
+    api_url = 'https://api.superjob.ru/2.0/vacancies/'
     headers = {'X-Api-App-Id': api_key}
     page = 0
     vacancies = []
+    total_found = 0
 
     while True:
         params = {
@@ -104,9 +110,12 @@ def fetch_superjob_vacancies(api_key, catalogue_id=48, town=4, count=100, keywor
             'keyword': keyword
         }
 
-        response = requests.get(url, headers=headers, params=params)
+        response = requests.get(api_url, headers=headers, params=params)
         response.raise_for_status()
         api_response = response.json()
+
+        if page == 0:
+            total_found = api_response.get('total', 0)
 
         vacancies.extend(api_response.get('objects', []))
 
@@ -115,59 +124,57 @@ def fetch_superjob_vacancies(api_key, catalogue_id=48, town=4, count=100, keywor
 
         page += 1
 
-    return vacancies
+    return vacancies, total_found
 
 
 def collect_superjob_stats(api_key, languages):
     stats = {}
 
     for language in languages:
-        vacancies = fetch_superjob_vacancies(api_key, keyword=language)
-        if not vacancies:
-            continue
-
+        vacancies, total_found = fetch_superjob_vacancies(
+            api_key,
+            keyword=language
+        )
         salaries = [
-            predict_rub_salary_superjob(vacancy) for vacancy in vacancies
-            if predict_rub_salary_superjob(vacancy) is not None
+            salary for vacancy in vacancies
+            if (salary := predict_rub_salary_superjob(vacancy))
         ]
 
-        if salaries:
-            average_salary = int(sum(salaries) / len(salaries))
-            stats[language] = {
-                "vacancies_found": len(vacancies),
-                "vacancies_processed": len(salaries),
-                "average_salary": average_salary
-            }
+        average_salary = int(sum(salaries) / len(salaries)) if salaries else 0
+
+        stats[language] = {
+            "vacancies_found": total_found,
+            "vacancies_processed": len(salaries),
+            "average_salary": average_salary
+        }
 
     return stats
 
 
 def print_stats_table(stats_headhunter, stats_superjob):
-    column_titles = ['Язык программирования', 'Вакансий', 'Обработано', 'Средняя зарплата']
+    def build_table(title, stats):
+        column_titles = [
+            'Язык программирования',
+            'Вакансий',
+            'Обработано',
+            'Средняя зарплата'
+        ]
+        table_rows = [column_titles]
 
-    headhunter_table_rows = [column_titles]
-    for language, statistics in stats_headhunter.items():
-        headhunter_table_rows.append([
-            language,
-            statistics["vacancies_found"],
-            statistics["vacancies_processed"],
-            statistics["average_salary"]
-        ])
+        for language, statistics in stats.items():
+            table_rows.append([
+                language,
+                statistics["vacancies_found"],
+                statistics["vacancies_processed"],
+                statistics["average_salary"]
+            ])
 
-    superjob_table_rows = [column_titles]
-    for language, statistics in stats_superjob.items():
-        superjob_table_rows.append([
-            language,
-            statistics["vacancies_found"],
-            statistics["vacancies_processed"],
-            statistics["average_salary"]
-        ])
+        table = AsciiTable(table_rows)
+        table.title = title
+        return table
 
-    headhunter_table = AsciiTable(headhunter_table_rows)
-    headhunter_table.title = "HeadHunter Москва"
-
-    superjob_table = AsciiTable(superjob_table_rows)
-    superjob_table.title = "SuperJob Москва"
+    headhunter_table = build_table("HeadHunter Москва", stats_headhunter)
+    superjob_table = build_table("SuperJob Москва", stats_superjob)
 
     print(headhunter_table.table)
     print(superjob_table.table)
@@ -176,7 +183,6 @@ def print_stats_table(stats_headhunter, stats_superjob):
 def main():
     load_dotenv()
 
-    hh_api_url = 'https://api.hh.ru/vacancies'
     superjob_api_key = os.environ["SUPERJOB_API_KEY"]
 
     languages = [
@@ -198,7 +204,7 @@ def main():
         "1C"
     ]
 
-    stats_headhunter = get_language_stats_hh(hh_api_url, languages)
+    stats_headhunter = get_language_stats_hh(languages)
     stats_superjob = collect_superjob_stats(superjob_api_key, languages)
 
     print_stats_table(stats_headhunter, stats_superjob)
