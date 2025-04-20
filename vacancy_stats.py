@@ -151,33 +151,26 @@ def collect_superjob_stats(api_key, languages):
     return stats
 
 
-def print_stats_table(stats_headhunter, stats_superjob):
-    def build_table(title, stats):
-        column_titles = [
-            'Язык программирования',
-            'Вакансий',
-            'Обработано',
-            'Средняя зарплата'
-        ]
-        table_rows = [column_titles]
+def build_table(title, stats):
+    column_titles = [
+        'Язык программирования',
+        'Вакансий',
+        'Обработано',
+        'Средняя зарплата'
+    ]
+    table_rows = [column_titles]
 
-        for language, statistics in stats.items():
-            table_rows.append([
-                language,
-                statistics["vacancies_found"],
-                statistics["vacancies_processed"],
-                statistics["average_salary"]
-            ])
+    for language, statistics in stats.items():
+        table_rows.append([
+            language,
+            statistics["vacancies_found"],
+            statistics["vacancies_processed"],
+            statistics["average_salary"]
+        ])
 
-        table = AsciiTable(table_rows)
-        table.title = title
-        return table
-
-    headhunter_table = build_table("HeadHunter Москва", stats_headhunter)
-    superjob_table = build_table("SuperJob Москва", stats_superjob)
-
-    print(headhunter_table.table)
-    print(superjob_table.table)
+    table = AsciiTable(table_rows)
+    table.title = title
+    return table
 
 
 def main():
@@ -207,7 +200,11 @@ def main():
     stats_headhunter = get_language_stats_hh(languages)
     stats_superjob = collect_superjob_stats(superjob_api_key, languages)
 
-    print_stats_table(stats_headhunter, stats_superjob)
+    headhunter_table = build_table("HeadHunter Москва", stats_headhunter)
+    superjob_table = build_table("SuperJob Москва", stats_superjob)
+
+    print(headhunter_table.table)
+    print(superjob_table.table)
 
 
 if __name__ == '__main__':
